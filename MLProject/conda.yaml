@@ -12,5 +12,4 @@ dependencies:
     - seaborn
     - scikit-learn
     - mlflow
-    - dagshub
     - requests
