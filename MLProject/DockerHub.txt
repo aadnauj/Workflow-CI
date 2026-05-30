@@ -1,0 +1,8 @@
+Docker Hub Repository:
+https://hub.docker.com/r/aadnauj/workflow-ci
+
+Docker Image:
+aadnauj/workflow-ci:latest
+
+Pull Command:
+docker pull aadnauj/workflow-ci:latest

@@ -1,0 +1,16 @@
+name: churn-mlflow-env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - pandas
+    - numpy
+    - matplotlib
+    - seaborn
+    - scikit-learn
+    - mlflow
+    - dagshub
+    - requests
