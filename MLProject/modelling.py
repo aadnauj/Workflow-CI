@@ -56,7 +56,7 @@ print(f"X_train={X_train.shape}, X_test={X_test.shape}")
 
 os.makedirs("tmp_artifacts", exist_ok=True)
 
-with mlflow.start_run(run_name=f"RF_n{args.n_estimators}_d{args.max_depth}"):
+with mlflow.start_run():
     model = RandomForestClassifier(
         n_estimators=args.n_estimators,
         max_depth=args.max_depth if args.max_depth > 0 else None,
