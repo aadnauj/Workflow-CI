@@ -50,9 +50,19 @@ jobs:
       - name: Push Docker Image to Docker Hub
         run: docker push aadnauj/workflow-ci:latest
 
+      - name: Save artifacts to repo
+        run: |
+          mkdir -p artifacts
+          cp -r mlruns/ artifacts/ 2>/dev/null || echo "no mlruns"
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add artifacts/ || true
+          git diff --staged --quiet || git commit -m "Save training artifacts"
+          git push || true
+
       - name: Upload Training Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: training-artifacts
-          path: mlruns/
+          path: artifacts/
           retention-days: 30
