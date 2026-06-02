@@ -1,176 +1,62 @@
-import os
-import argparse
-import json
-import shutil
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import mlflow
 import mlflow.sklearn
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
-    f1_score,
-    confusion_matrix,
-    roc_curve,
-    auc,
-    classification_report
+    f1_score
 )
-from mlflow.models.signature import infer_signature
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--n_estimators", type=int, default=100)
-parser.add_argument("--max_depth", type=int, default=10)
-parser.add_argument("--random_state", type=int, default=42)
-parser.add_argument("--test_size", type=float, default=0.2)
-args = parser.parse_args()
+# Load dataset
+df = pd.read_csv("data_preprocessed.csv")
 
-print(f"n_estimators={args.n_estimators}, max_depth={args.max_depth}")
+# Pisahkan fitur dan target
+X = df.drop("Exited", axis=1)
+y = df["Exited"]
 
-# Cari dataset
-csv_path = None
-for root, dirs, files in os.walk("."):
-    for file in files:
-        if file.endswith(".csv") and "churn" in file.lower():
-            csv_path = os.path.join(root, file)
-            break
-    if csv_path:
-        break
-
-if not csv_path:
-    raise FileNotFoundError("Dataset tidak ditemukan")
-
-print(f"Memuat dataset: {csv_path}")
-
-data = pd.read_csv(csv_path)
-
-drop_cols = ["RowNumber", "CustomerId", "Surname"]
-data = data.drop(columns=[c for c in drop_cols if c in data.columns])
-
-for col in ["Geography", "Gender"]:
-    if col in data.columns:
-        le = LabelEncoder()
-        data[col] = le.fit_transform(data[col])
-
-X = data.drop(columns=["Exited"])
-y = data["Exited"]
-
+# Split data
 X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
-    test_size=args.test_size,
-    random_state=args.random_state
+    test_size=0.2,
+    random_state=42,
+    stratify=y
 )
 
-scaler = MinMaxScaler()
+with mlflow.start_run(nested=True):
 
-X_train = pd.DataFrame(
-    scaler.fit_transform(X_train),
-    columns=X_train.columns
-)
+    model = RandomForestClassifier(
+        n_estimators=100,
+        random_state=42
+    )
 
-X_test = pd.DataFrame(
-    scaler.transform(X_test),
-    columns=X_test.columns
-)
+    model.fit(X_train, y_train)
 
-model = RandomForestClassifier(
-    n_estimators=args.n_estimators,
-    max_depth=args.max_depth if args.max_depth > 0 else None,
-    random_state=args.random_state
-)
+    y_pred = model.predict(X_test)
 
-model.fit(X_train, y_train)
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
 
-y_pred = model.predict(X_test)
-y_prob = model.predict_proba(X_test)[:, 1]
+    mlflow.log_param("model", "RandomForest")
+    mlflow.log_param("n_estimators", 100)
 
-acc = accuracy_score(y_test, y_pred)
-prec = precision_score(y_test, y_pred, zero_division=0)
-rec = recall_score(y_test, y_pred, zero_division=0)
-f1 = f1_score(y_test, y_pred, zero_division=0)
+    mlflow.log_metric("accuracy", accuracy)
+    mlflow.log_metric("precision", precision)
+    mlflow.log_metric("recall", recall)
+    mlflow.log_metric("f1_score", f1)
 
-cm = confusion_matrix(y_test, y_pred)
-tn, fp, fn, tp = cm.ravel()
+    mlflow.sklearn.log_model(
+        model,
+        artifact_path="model"
+    )
 
-fpr, tpr, _ = roc_curve(y_test, y_prob)
-roc_auc = auc(fpr, tpr)
-
-mlflow.log_param("n_estimators", args.n_estimators)
-mlflow.log_param("max_depth", args.max_depth)
-mlflow.log_param("random_state", args.random_state)
-mlflow.log_param("test_size", args.test_size)
-
-mlflow.log_metric("accuracy", acc)
-mlflow.log_metric("precision", prec)
-mlflow.log_metric("recall", rec)
-mlflow.log_metric("f1_score", f1)
-mlflow.log_metric("roc_auc", roc_auc)
-
-os.makedirs("tmp_artifacts", exist_ok=True)
-
-# Confusion Matrix
-fig, ax = plt.subplots(figsize=(6, 5))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
-plt.tight_layout()
-plt.savefig("tmp_artifacts/confusion_matrix.png")
-plt.close()
-
-mlflow.log_artifact(
-    "tmp_artifacts/confusion_matrix.png",
-    artifact_path="plots"
-)
-
-# ROC Curve
-fig, ax = plt.subplots(figsize=(6, 5))
-ax.plot(fpr, tpr, label=f"AUC={roc_auc:.4f}")
-ax.plot([0, 1], [0, 1], "--")
-ax.legend()
-
-plt.tight_layout()
-plt.savefig("tmp_artifacts/roc_curve.png")
-plt.close()
-
-mlflow.log_artifact(
-    "tmp_artifacts/roc_curve.png",
-    artifact_path="plots"
-)
-
-report = classification_report(
-    y_test,
-    y_pred,
-    output_dict=True
-)
-
-with open("tmp_artifacts/report.json", "w") as f:
-    json.dump(report, f, indent=2)
-
-mlflow.log_artifact(
-    "tmp_artifacts/report.json",
-    artifact_path="reports"
-)
-
-signature = infer_signature(
-    X_train,
-    model.predict(X_train)
-)
-
-mlflow.sklearn.log_model(
-    sk_model=model,
-    artifact_path="model",
-    signature=signature,
-    registered_model_name="RandomForest_WorkflowCI"
-)
-
-shutil.rmtree("tmp_artifacts", ignore_errors=True)
-
-print(f"Accuracy : {acc:.4f}")
-print(f"F1 Score : {f1:.4f}")
-print(f"ROC AUC  : {roc_auc:.4f}")
-print("Training selesai")
+    print(f"Accuracy : {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall   : {recall:.4f}")
+    print(f"F1 Score : {f1:.4f}")
